@@ -1,0 +1,26 @@
+From 9c0e0b6a7d4c2f1e0a1b2c3d4e5f60718293a4b5 Mon Sep 17 00:00:00 2001
+From: patchbot <patchbot@example.com>
+Date: Thu, 11 Dec 2025 00:00:00 -0500
+Subject: [PATCH] probe: clamp probe Z descent speed to 1mm/s
+
+Hard-clamp the Z descent probing speed to 1.0mm/s during run_probe()
+to reduce optical probe variance caused by overshoot and vibration.
+
+---
+ firmware/core/klippy/extras/probe.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+--- a/firmware/core/klippy/extras/probe.cpp
++++ b/firmware/core/klippy/extras/probe.cpp
+@@ -283,6 +283,11 @@
+         {
+             speed = gcmd.get_double("PROBE_SPEED", m_speed, DBL_MIN, DBL_MAX, 0.0);
+         }
++        // Hard clamp probe Z descent speed to 1.0mm/s for optical stability
++        // (reduces overshoot, vibration sensitivity, and shadow-trigger jitter)
++        double requested_speed = speed;
++        speed = 1.0;
++        LOG_D("Probe descent speed clamped: requested=%.3f mm/s -> using %.3f mm/s\n", requested_speed, speed);
+         LOG_D("准备执行探测,当前Z 坐标%.6f,探测速度为%.2f\n", Printer::GetInstance()->m_tool_head->get_position()[2], speed); // 获取的这个位置是应用了position_endstop之后的坐标
+         // 执行 run_G29_Z
+         std::vector<double> pos = _probe(speed);                                                                              // 采集样本

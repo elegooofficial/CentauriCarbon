@@ -5,6 +5,9 @@
 #define LOG_TAG "probe"
 #undef LOG_LEVEL
 #define LOG_LEVEL LOG_DEBUG
+// Added for small post-probe dwell and warm-up behavior
+#include <thread>
+#include <chrono>
 #include "log.h"
 #define PROBE_STATE_CALLBACK_SIZE 16
 static probe_state_callback_t probe_state_callback[PROBE_STATE_CALLBACK_SIZE];
@@ -253,6 +256,11 @@ std::vector<double> PrinterProbe::run_probe(GCodeCommand &gcmd)
     std::string samples_result = gcmd.get_string("SAMPLES_RESULT", m_samples_result);
     bool must_notify_multi_probe = !m_multi_probe_pending;
     // static double last_compensation_z_measure = 100000;
+        // Small dwell and optional warm-up for optical probes:
+        // - probe_dwell_ms: sleep after probe to allow sensor to settle
+        // - performed_warmup: per-run warm-up discard when using multiple samples
+        const int probe_dwell_ms = 5; // ms; adjust for your specific optical hardware
+        bool performed_warmup = false;
     if (must_notify_multi_probe)
     {
         multi_probe_begin();
@@ -283,9 +291,28 @@ std::vector<double> PrinterProbe::run_probe(GCodeCommand &gcmd)
         {
             speed = gcmd.get_double("PROBE_SPEED", m_speed, DBL_MIN, DBL_MAX, 0.0);
         }
+		
+		double requested_speed = speed;
+		speed = 1.0;  //clamp Z descent to this to hopefully improve accuracy 
+        LOG_W("Probe descent speed clamped: requested=%.3f mm/s -> using %.3f mm/s\n",
+              requested_speed, speed);
+		
         LOG_D("准备执行探测,当前Z 坐标%.6f,探测速度为%.2f\n", Printer::GetInstance()->m_tool_head->get_position()[2], speed); // 获取的这个位置是应用了position_endstop之后的坐标
         // 执行 run_G29_Z
         std::vector<double> pos = _probe(speed);                                                                              // 采集样本
+        // --- Added: short dwell to allow optical probe to stabilize ---
+        std::this_thread::sleep_for(std::chrono::milliseconds(probe_dwell_ms));
+
+        // --- Added: flush last move time (ensure moves completed/lookahead flushed) ---
+        Printer::GetInstance()->m_tool_head->get_last_move_time();
+
+        // Perform a single warm-up probe for multi-sample runs:
+        // helps optical probes stabilize thermally/optically at the start.
+        if (!performed_warmup && sample_count > 1) {
+            performed_warmup = true;
+            (void)_probe(speed); // discard warm-up result
+            std::this_thread::sleep_for(std::chrono::milliseconds(probe_dwell_ms));
+        }
         double z_pos = pos[2];
         std::vector<double> position = {pos[0], pos[1], z_pos};
 
@@ -324,8 +351,8 @@ std::vector<double> PrinterProbe::run_probe(GCodeCommand &gcmd)
                 // coord = {probexy[0], probexy[1], z_pos + move_after_each_sample*probe_index/sample_count};
                 // LOG_D("触发后继续下移:%.6f mm\n", move_after_each_sample);
                 // _move(coord, speed);
-                coord = {probexy[0], probexy[1], z_pos + sample_retract_dist*probe_index/sample_count}; // 抬起，准备下一次探针触发
-                LOG_D("抬起:%f 后的目标绝对位置Z为:%.6f，移动到下一探测起点\n", sample_retract_dist, z_pos + sample_retract_dist*probe_index/sample_count);
+                coord = {probexy[0], probexy[1], z_pos + sample_retract_dist * (double)probe_index / (double)sample_count}; // 抬起，准备下一次探针触发
+                LOG_D("抬起:%f 后的目标绝对位置Z为:%.6f，移动到下一探测起点\n", sample_retract_dist, z_pos + sample_retract_dist * (double)probe_index / (double)sample_count);
                 // 移动到下一次探测点坐标
                 _move(coord, lift_speed);
             }
@@ -482,9 +509,9 @@ void PrinterProbe::cmd_PROBE_CALIBRATE(GCodeCommand &gcmd)
         /*获取到新的Z_offset后修改当前Z坐标，不用在归零后才应用*/
         std::vector<double> cur_commanded_pos = Printer::GetInstance()->m_tool_head->m_commanded_pos;
         LOG_D("修改前 cur_commanded_pos[2] = %.6f\n", cur_commanded_pos[2]);
-        cur_commanded_pos[2] -= (curpos[2] + m_z_offset_adjust);
-        Printer::GetInstance()->m_tool_head->set_position(cur_commanded_pos);
-        LOG_D("修改后 cur_commanded_pos[2] = %.6f\n", cur_commanded_pos[2]);
+        // Do not change commanded Z here; Klipper-style behavior:
+        // calibration only measures and later updates config via probe_calibrate_finalize().
+        LOG_D("Calibration sample = %.6f (no commanded Z modification)\n", curpos[2]);
         /*获取到新的Z_offset后修改当前Z坐标，不用在归零后才应用*/
         // Move away from the bed
         m_probe_calibrate_z = curpos[2];

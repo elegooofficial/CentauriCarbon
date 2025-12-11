@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000003 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Thu, 11 Dec 2025 00:00:03 +0000
+Subject: [PATCH 3/3] probe: avoid changing commanded Z during PROBE_CALIBRATE
+
+---
+--- a/firmware/core/klippy/extras/probe.cpp
++++ b/firmware/core/klippy/extras/probe.cpp
+@@ -503,9 +503,9 @@
+         /*获取到新的Z_offset后修改当前Z坐标，不用在归零后才应用*/
+         std::vector<double> cur_commanded_pos = Printer::GetInstance()->m_tool_head->m_commanded_pos;
+         LOG_D("修改前 cur_commanded_pos[2] = %.6f\n", cur_commanded_pos[2]);
+-        cur_commanded_pos[2] -= (curpos[2] + m_z_offset_adjust);
+-        Printer::GetInstance()->m_tool_head->set_position(cur_commanded_pos);
+-        LOG_D("修改后 cur_commanded_pos[2] = %.6f\n", cur_commanded_pos[2]);
++        // Do not change commanded Z here; Klipper-style behavior:
++        // calibration only measures and later updates config via probe_calibrate_finalize().
++        LOG_D("Calibration sample = %.6f (no commanded Z modification)\n", curpos[2]);
+         /*获取到新的Z_offset后修改当前Z坐标，不用在归零后才应用*/
+         // Move away from the bed
+         m_probe_calibrate_z = curpos[2];

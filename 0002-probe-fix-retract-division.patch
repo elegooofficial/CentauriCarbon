@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000002 Mon Sep 17 00:00:00 2001
+From: Your Name <you@example.com>
+Date: Thu, 11 Dec 2025 00:00:02 +0000
+Subject: [PATCH 2/3] probe: fix retract distance integer division
+
+---
+--- a/firmware/core/klippy/extras/probe.cpp
++++ b/firmware/core/klippy/extras/probe.cpp
+@@ -345,8 +345,8 @@
+                 // coord = {probexy[0], probexy[1], z_pos + move_after_each_sample*probe_index/sample_count};
+                 // LOG_D("触发后继续下移:%.6f mm\n", move_after_each_sample);
+                 // _move(coord, speed);
+-                coord = {probexy[0], probexy[1], z_pos + sample_retract_dist*probe_index/sample_count}; // 抬起，准备下一次探针触发
+-                LOG_D("抬起:%f 后的目标绝对位置Z为:%.6f，移动到下一探测起点\n", sample_retract_dist, z_pos + sample_retract_dist*probe_index/sample_count);
++                coord = {probexy[0], probexy[1], z_pos + sample_retract_dist * (double)probe_index / (double)sample_count}; // 抬起，准备下一次探针触发
++                LOG_D("抬起:%f 后的目标绝对位置Z为:%.6f，移动到下一探测起点\n", sample_retract_dist, z_pos + sample_retract_dist * (double)probe_index / (double)sample_count);
+                 // 移动到下一次探测点坐标
+                 _move(coord, lift_speed);
+             }
