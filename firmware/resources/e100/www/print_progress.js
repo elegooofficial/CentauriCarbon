@@ -1,0 +1,1 @@
+new MutationObserver(()=>{if(document.querySelector(".status-box-complete"))return void(document.title="Done");const t=document.querySelector(".task-detail div span:first-child");if(t){const e=t.textContent.trim();isNaN(e)||(document.title=`${e}%`)}}).observe(document.body,{childList:!0,subtree:!0,characterData:!0});
